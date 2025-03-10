@@ -1,10 +1,15 @@
-name: Build Flutter Android App
+name: Build Flutter App
 
 on:
-  workflow_dispatch:  # 🔹 Hanya berjalan secara manual
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Pilih Platform untuk Build (android/ios/web/windows/macos/linux/all)'
+        required: true
+        default: 'all'
 
 jobs:
-  build-android:
+  build-app:
     runs-on: ubuntu-22.04
 
     steps:
@@ -14,7 +19,7 @@ jobs:
       - name: 🔧 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'  # Sesuaikan dengan Flutter terbaru
+          flutter-version: '3.19.6'
           cache: true
 
       - name: 🔧 Setup Java 17
@@ -35,16 +40,17 @@ jobs:
           rm -rf ~/.pub-cache
           flutter pub get
 
-      - name: 🏗️ Generate `android/` Folder Jika Belum Ada
+      - name: 🏗️ Generate Platform Folders Jika Belum Ada
         run: |
-          if [ ! -d "android" ]; then
-            echo "⚠️ Folder `android/` tidak ditemukan! Membuat ulang..."
-            flutter create --platforms=android .
+          if [ ! -d "android" ] || [ ! -d "ios" ] || [ ! -d "web" ]; then
+            echo "⚠️ Beberapa platform tidak ditemukan! Membuat ulang..."
+            flutter create --platforms=android,ios,web,windows,macos,linux .
           else
-            echo "✅ Folder `android/` sudah ada."
+            echo "✅ Semua platform sudah ada."
           fi
 
-      - name: 🔧 Set NDK Version di `android/local.properties`
+      - name: 🔧 Set NDK Version (Android)
+        if: contains(fromJSON('["android", "all"]'), inputs.platform)
         run: |
           mkdir -p android  # Pastikan folder ada
           touch android/local.properties  # Buat file jika belum ada
@@ -53,29 +59,92 @@ jobs:
       - name: 📦 Install Dependencies
         run: flutter pub get
 
-      # ---- BUILD DEBUG ----
-      - name: 🏗️ Build Android APK (Debug)
-        run: flutter build apk --debug
+      # ---- BUILD ANDROID ----
+      - name: 🏗️ Build Android APK
+        if: contains(fromJSON('["android", "all"]'), inputs.platform)
+        run: flutter build apk
 
-      - name: 📤 Upload Android APK (Debug)
+      - name: 📤 Upload Android APK
+        if: contains(fromJSON('["android", "all"]'), inputs.platform)
         uses: actions/upload-artifact@v4
         with:
-          name: flutter-apk-debug
-          path: build/app/outputs/flutter-apk/app-debug.apk
-
-      # ---- BUILD RELEASE ----
-      - name: 🏗️ Build Android APK (Release)
-        run: flutter build apk --release
-
-      - name: 📤 Upload Android APK (Release)
-        uses: actions/upload-artifact@v4
-        with:
-          name: flutter-apk-release
+          name: artifacts-android
           path: build/app/outputs/flutter-apk/app-release.apk
 
-      # ---- UPLOAD `android/` FOLDER AS ARTIFACT ----
-      - name: 📤 Upload `android/` Folder as Artifact
+      # ---- BUILD IOS ----
+      - name: 🏗️ Build iOS
+        if: contains(fromJSON('["ios", "all"]'), inputs.platform)
+        run: flutter build ios --no-codesign
+
+      - name: 📤 Upload iOS Build
+        if: contains(fromJSON('["ios", "all"]'), inputs.platform)
         uses: actions/upload-artifact@v4
         with:
-          name: android-folder
-          path: android/
+          name: artifacts-ios
+          path: build/ios/iphoneos/
+
+      # ---- BUILD WEB ----
+      - name: 🏗️ Build Web
+        if: contains(fromJSON('["web", "all"]'), inputs.platform)
+        run: flutter build web
+
+      - name: 📤 Upload Web Build
+        if: contains(fromJSON('["web", "all"]'), inputs.platform)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-web
+          path: build/web/
+
+      # ---- BUILD WINDOWS ----
+      - name: 🏗️ Build Windows
+        if: contains(fromJSON('["windows", "all"]'), inputs.platform)
+        run: flutter build windows
+
+      - name: 📤 Upload Windows Build
+        if: contains(fromJSON('["windows", "all"]'), inputs.platform)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-windows
+          path: build/windows/
+
+      # ---- BUILD MACOS ----
+      - name: 🏗️ Build macOS
+        if: contains(fromJSON('["macos", "all"]'), inputs.platform)
+        run: flutter build macos
+
+      - name: 📤 Upload macOS Build
+        if: contains(fromJSON('["macos", "all"]'), inputs.platform)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-macos
+          path: build/macos/
+
+      # ---- BUILD LINUX ----
+      - name: 🏗️ Build Linux
+        if: contains(fromJSON('["linux", "all"]'), inputs.platform)
+        run: flutter build linux
+
+      - name: 📤 Upload Linux Build
+        if: contains(fromJSON('["linux", "all"]'), inputs.platform)
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-linux
+          path: build/linux/
+
+      # ---- UPLOAD SEMUA HASIL BUILD DALAM SATU FOLDER ----
+      - name: 📤 Upload Semua Artefak dalam Satu Folder
+        if: always()
+        run: |
+          mkdir -p artifacts/
+          cp -r build/app/outputs/flutter-apk/app-release.apk artifacts/ || true
+          cp -r build/ios/iphoneos/ artifacts/ || true
+          cp -r build/web/ artifacts/ || true
+          cp -r build/windows/ artifacts/ || true
+          cp -r build/macos/ artifacts/ || true
+          cp -r build/linux/ artifacts/ || true
+
+      - name: 📤 Upload Folder `artifacts/`
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-artifacts
+          path: artifacts/
