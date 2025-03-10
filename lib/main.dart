@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'banner_ad_widget.dart';
 import 'interstitial_ad_manager.dart';
@@ -11,9 +13,8 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   MobileAds.instance.initialize();
 
-  // Inisialisasi dan muat App Open Ad
-  AppOpenAdManager().initialize();
-  InterstitialAdManager.loadAd();
+  // **Tampilkan Open Ads hanya saat aplikasi pertama kali dibuka**
+  AppOpenAdManager().showAdIfAvailable();
 
   runApp(MyApp());
 }
@@ -40,6 +41,14 @@ class _WebViewScreenState extends State<WebViewScreen> {
   @override
   void initState() {
     super.initState();
+    _initializeWebView();
+  }
+
+  void _initializeWebView() async {
+    // Cek koneksi internet
+    var connectivityResult = await Connectivity().checkConnectivity();
+    bool hasInternet = connectivityResult != ConnectivityResult.none;
+
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent("enzoXzodix")
@@ -51,21 +60,25 @@ class _WebViewScreenState extends State<WebViewScreen> {
             InterstitialAdManager.showAd();
           },
           onWebResourceError: (error) async {
-            _controller.loadRequest(
-              Uri.dataFromString(
-                '<html><body><h1>Page Not Found</h1></body></html>',
-                mimeType: 'text/html',
-                encoding: Encoding.getByName('utf-8'),
-              ),
-            );
+            if (!hasInternet) {
+              _loadLocalErrorPage();
+            }
           },
         ),
-      )
-      ..loadRequest(Uri.parse('https://xdtoolts.xyz/'));
+      );
 
-    Future.delayed(Duration(seconds: 2), () {
-      AppOpenAdManager().showAdIfAvailable();
-    });
+    if (hasInternet) {
+      _controller.loadRequest(Uri.parse('https://xdtoolts.xyz/'));
+    } else {
+      _loadLocalErrorPage();
+    }
+  }
+
+  void _loadLocalErrorPage() async {
+    String html = await rootBundle.loadString('assets/404.html');
+    _controller.loadRequest(
+      Uri.dataFromString(html, mimeType: 'text/html', encoding: Encoding.getByName('utf-8')),
+    );
   }
 
   @override
